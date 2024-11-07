@@ -1,0 +1,4 @@
+pandas               # Data manipulation in custom Airflow tasks
+requests             # API requests, e.g., for weather data
+duckdb               # Connecting to DuckDB from within Airflow DAGs
+apache-airflow 

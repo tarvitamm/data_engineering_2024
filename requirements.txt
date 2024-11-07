@@ -1,0 +1,4 @@
+pandas               # Used for data manipulation in multiple services
+requests             # For making API requests (e.g., fetching data)
+duckdb               # Shared library for DuckDB access
+pytest  

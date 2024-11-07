@@ -1,0 +1,5 @@
+streamlit            # Streamlit for building interactive dashboards
+duckdb               # DuckDB access from within Streamlit
+pandas               # Data manipulation in the dashboard
+plotly               # For interactive visualizations (optional)
+matplotlib 

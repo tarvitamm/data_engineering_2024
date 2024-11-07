@@ -1,0 +1,41 @@
+version: "3.8"
+
+services:
+  airflow:
+    build:
+      context: ./docker/airflow
+    container_name: airflow_container
+    restart: always
+    environment:
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+    ports:
+      - "8080:8080"
+    command: >
+      bash -c "
+      airflow db init &&
+      airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com &&
+      airflow scheduler &
+      airflow webserver"
+    depends_on:
+      - dbt
+
+  dbt:
+    build:
+      context: ./docker/dbt
+    container_name: dbt_container
+    volumes:
+      - ./dbt_project:/usr/app/dbt_project
+    command: "sleep infinity"
+    depends_on:
+      - streamlit
+
+  streamlit:
+    build:
+      context: ./docker/streamlit
+    container_name: streamlit_container
+    ports:
+      - "8501:8501"
