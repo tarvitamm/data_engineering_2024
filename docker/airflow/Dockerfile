@@ -13,9 +13,7 @@ USER airflow
 COPY requirements.txt /requirements.txt
 RUN pip install --no-cache-dir -r /requirements.txt
 
-# Copy your Airflow DAGs and scripts
-COPY dags/ /opt/airflow/dags/
-COPY scripts/ /opt/airflow/scripts/
+# No need to copy DAGs, as they are mounted via volumes in docker-compose.yml
 
 # Set the entrypoint (if different from default)
 # ENTRYPOINT ["/entrypoint"]
