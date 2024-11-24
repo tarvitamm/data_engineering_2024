@@ -1,4 +1,0 @@
-dbt-core==1.2.0      # Make sure this matches your desired dbt version
-dbt-duckdb==1.2.0    # DuckDB adapter for dbt
-duckdb               # DuckDB for database interaction
-pytz 

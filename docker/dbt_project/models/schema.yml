@@ -1,0 +1,12 @@
+version: 2
+
+models:
+  - name: combined_analysis
+    description: "Model to analyze traffic accidents by region and type"
+    columns:
+      - name: Maakond
+        description: "The region where the traffic accident occurred"
+      - name: Liiklusõnnetuse liik
+        description: "The type of traffic accident"
+      - name: total_accidents
+        description: "The total number of traffic accidents"

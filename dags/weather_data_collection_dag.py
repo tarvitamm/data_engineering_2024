@@ -4,23 +4,25 @@ from datetime import datetime, timedelta
 import requests
 
 def fetch_weather_data(ti):
-    url = "https://api.open-meteo.com/v1/forecast"
+    url = "https://archive-api.open-meteo.com/v1/archive"
     params = {
         "latitude": 58.3827,
         "longitude": 26.7158,
-        "start_date": "2023-01-01",
-        "end_date": "2023-01-10",
+        "start_date": "2011-01-01",
+        "end_date": "2024-01-01",
         "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum",
         "timezone": "Europe/Tallinn"
     }
     response = requests.get(url, params=params)
     data = response.json()
     
-    # Log the JSON response to see it in the Airflow logs
-    print("Weather Data:", data)
-    
-    # Push data to XCom for other tasks to access
-    ti.xcom_push(key='weather_data', value=data)
+    file_path = '/opt/airflow/data/processed/weather_data.json'
+    with open(file_path, 'w') as f:
+        import json
+        json.dump(data, f)
+
+    # Push file path to XCom (optional)
+    ti.xcom_push(key='weather_file_path', value=file_path)
 
 default_args = {
     'owner': 'airflow',

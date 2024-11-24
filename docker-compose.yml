@@ -12,6 +12,7 @@ services:
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
       - ./plugins:/opt/airflow/plugins
+      - ./data:/opt/airflow/data
     ports:
       - "8080:8080"
     command: >
@@ -25,13 +26,14 @@ services:
 
   dbt:
     build:
-      context: ./docker/dbt
+      context: ./docker/dbt_project # Ensure the Dockerfile is in the correct directory
     container_name: dbt_container
     volumes:
-      - ./dbt_project:/usr/app/dbt_project
-    command: "sleep infinity"
-    depends_on:
-      - streamlit
+      - ./docker/dbt_project:/usr/app/dbt_project
+      - ./docker/dbt_project/profiles.yml:/root/.dbt/profiles.yml
+      - ./data/processed:/usr/app/data/processed
+    command: tail -f /dev/null
+    tty: true
 
   streamlit:
     build:
