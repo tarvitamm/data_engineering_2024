@@ -2,8 +2,11 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from datetime import datetime, timedelta
 import requests
+from pymongo import MongoClient
+import json
 
-def fetch_weather_data(ti):
+def fetch_and_save_weather_to_mongodb():
+    # Fetch weather data from API
     url = "https://archive-api.open-meteo.com/v1/archive"
     params = {
         "latitude": 58.3827,
@@ -14,15 +17,42 @@ def fetch_weather_data(ti):
         "timezone": "Europe/Tallinn"
     }
     response = requests.get(url, params=params)
-    data = response.json()
+    if response.status_code != 200:
+        raise Exception(f"Failed to fetch data. Status code: {response.status_code}")
     
-    file_path = '/opt/airflow/data/processed/weather_data.json'
-    with open(file_path, 'w') as f:
-        import json
-        json.dump(data, f)
+    data = response.json()
 
-    # Push file path to XCom (optional)
-    ti.xcom_push(key='weather_file_path', value=file_path)
+    # Connect to MongoDB
+    mongo_uri = "mongodb://root:example@mongodb:27017"
+    client = MongoClient(mongo_uri)
+    db = client["weather_data"]  # Database name
+    collection = db["daily_weather"]  # Collection name
+
+    # Transform and insert data into MongoDB
+    # Assuming data['daily'] contains the weather records
+    if 'daily' in data:
+        daily_data = data['daily']
+        records = []
+
+        # Transform API response into individual records
+        for i in range(len(daily_data['time'])):
+            record = {
+                "date": daily_data['time'][i],
+                "temperature_max": daily_data['temperature_2m_max'][i],
+                "temperature_min": daily_data['temperature_2m_min'][i],
+                "precipitation_sum": daily_data['precipitation_sum'][i],
+                "snowfall_sum": daily_data['snowfall_sum'][i],
+                "rain_sum": daily_data['rain_sum'][i]
+            }
+            records.append(record)
+
+        # Insert records into MongoDB
+        collection.insert_many(records)
+        print(f"Inserted {len(records)} weather records into MongoDB.")
+    else:
+        raise Exception("No daily data found in API response.")
+
+    client.close()
 
 default_args = {
     'owner': 'airflow',
@@ -31,17 +61,17 @@ default_args = {
 }
 
 with DAG(
-    'weather_data_extraction',
+    'weather_data_to_mongodb_DAG',
     default_args=default_args,
-    description='DAG to fetch weather data from API',
+    description='DAG to fetch weather data from API and save to MongoDB',
     schedule_interval='@daily',
     start_date=datetime(2023, 1, 1),
     catchup=False,
 ) as dag:
 
-    fetch_weather = PythonOperator(
-        task_id='fetch_weather_data',
-        python_callable=fetch_weather_data,
+    fetch_and_save_weather = PythonOperator(
+        task_id='fetch_and_save_weather_to_mongodb',
+        python_callable=fetch_and_save_weather_to_mongodb,
     )
 
-    fetch_weather
+    fetch_and_save_weather

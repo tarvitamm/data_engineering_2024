@@ -1,15 +1,17 @@
-WITH bad_weather_accidents AS (
-    SELECT
-        Maakond,
-        COUNT(*) AS total_accidents
-    FROM
-        integrated_data
-    WHERE
-        precipitation_sum > 0
-    GROUP BY
-        Maakond
+WITH bad_weather AS (
+    SELECT *,
+           CASE 
+             WHEN precipitation_sum > 2 OR snowfall_sum > 0 OR temperature_2m_max <= 0 THEN 1 
+             ELSE 0 
+           END AS is_bad_weather
+    FROM integrated_data
 )
-SELECT Maakond, total_accidents
-FROM bad_weather_accidents
-ORDER BY total_accidents DESC
-LIMIT 1
+SELECT 
+    Maakond,
+    COUNT(*) AS accidents_bad_weather,
+    SUM(Vigastatuid) AS total_injured_bad_weather,
+    SUM(Hukkunuid) AS total_fatalities_bad_weather
+FROM bad_weather
+WHERE is_bad_weather = 1
+GROUP BY Maakond
+ORDER BY accidents_bad_weather DESC

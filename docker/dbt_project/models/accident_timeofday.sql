@@ -1,24 +1,22 @@
-WITH time_weather_analysis AS (
+WITH time_weather AS (
     SELECT
-        CASE
-            WHEN EXTRACT(HOUR FROM CAST(Toimumisaeg AS TIMESTAMP)) BETWEEN 6 AND 12 THEN 'Morning'
-            WHEN EXTRACT(HOUR FROM CAST(Toimumisaeg AS TIMESTAMP)) BETWEEN 12 AND 18 THEN 'Afternoon'
-            WHEN EXTRACT(HOUR FROM CAST(Toimumisaeg AS TIMESTAMP)) BETWEEN 18 AND 24 THEN 'Evening'
-            ELSE 'Night'
+        CASE 
+            WHEN CAST(strftime(CAST(time AS TIMESTAMP), '%H') AS INTEGER) < 6 THEN 'Night (00:00-05:59)'
+            WHEN CAST(strftime(CAST(time AS TIMESTAMP), '%H') AS INTEGER) < 12 THEN 'Morning (06:00-11:59)'
+            WHEN CAST(strftime(CAST(time AS TIMESTAMP), '%H') AS INTEGER) < 18 THEN 'Afternoon (12:00-17:59)'
+            ELSE 'Evening (18:00-23:59)'
         END AS time_of_day,
-        precipitation_sum, -- Replace with actual weather column name
-        COUNT(*) AS total_accidents
-    FROM
-        integrated_data
-    GROUP BY
-        precipitation_sum, time_of_day
+
+        CASE 
+            WHEN precipitation_sum = 0 THEN 'No precipitation'
+            WHEN precipitation_sum <= 2 THEN 'Light precipitation'
+            WHEN precipitation_sum <= 5 THEN 'Moderate precipitation'
+            ELSE 'Heavy precipitation'
+        END AS precipitation_category
+    FROM integrated_data
+    WHERE time IS NOT NULL AND CAST(time AS TIMESTAMP) IS NOT NULL -- Exclude invalid rows
 )
-SELECT
-    precipitation_sum AS weather_condition, -- Replace with actual weather column name
-    time_of_day,
-    total_accidents
-FROM
-    time_weather_analysis
-ORDER BY
-    total_accidents DESC
-LIMIT 1
+SELECT time_of_day, precipitation_category, COUNT(*) AS total_accidents
+FROM time_weather
+GROUP BY time_of_day, precipitation_category
+ORDER BY time_of_day, precipitation_category

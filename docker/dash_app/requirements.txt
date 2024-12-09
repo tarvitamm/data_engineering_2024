@@ -1,0 +1,6 @@
+dash
+redis
+duckdb
+pandas               
+plotly               
+matplotlib

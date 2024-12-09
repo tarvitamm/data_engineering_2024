@@ -12,6 +12,8 @@ USER airflow
 # Copy requirements and install Python packages
 COPY requirements.txt /requirements.txt
 RUN pip install --no-cache-dir -r /requirements.txt
+# Install pymongo
+RUN pip install pymongo
 
 # No need to copy DAGs, as they are mounted via volumes in docker-compose.yml
 

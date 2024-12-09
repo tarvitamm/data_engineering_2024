@@ -70,7 +70,7 @@ default_args = {
 }
 
 with DAG(
-    'data_processing_dag',
+    'accident_data_DAG',
     default_args=default_args,
     description='DAG to process input csv file data',
     schedule_interval='@daily',

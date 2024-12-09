@@ -2,21 +2,24 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from datetime import datetime, timedelta
 import pandas as pd
-import json
 import duckdb
+from pymongo import MongoClient
 
-def extract_weather_data(**kwargs):
-    # Load processed weather data from JSON
-    file_path = '/opt/airflow/data/processed/weather_data.json'
-    with open(file_path, 'r') as f:
-        weather_data = json.load(f)
+def extract_weather_data_from_mongodb(**kwargs):
+    # Connect to MongoDB
+    mongo_uri = "mongodb://root:example@mongodb:27017"
+    client = MongoClient(mongo_uri)
+    db = client["weather_data"]
+    collection = db["daily_weather"]
 
-    # Convert to DataFrame
-    df_weather = pd.DataFrame(weather_data['daily'])
+    # Fetch weather data from MongoDB without '_id'
+    weather_data = pd.DataFrame(list(collection.find({}, {'_id': 0})))
 
-    # Correct handling of 'time' column
-    df_weather['date'] = pd.to_datetime(weather_data['daily']['time']).strftime('%Y-%m-%d')  # Convert to string directly
-    return df_weather.to_dict(orient='records')  # Return as list of records for XCom
+    # Ensure 'date' column is in the correct format
+    weather_data['date'] = pd.to_datetime(weather_data['date']).dt.strftime('%Y-%m-%d')
+
+    client.close()
+    return weather_data.to_dict(orient='records')
 
 def extract_accident_data(**kwargs):
     # Load cleaned accident data from CSV
@@ -38,7 +41,7 @@ def join_datasets(**kwargs):
     weather_data['date'] = pd.to_datetime(weather_data['date'])
     accident_data['Toimumisaeg'] = pd.to_datetime(accident_data['Toimumisaeg'])
 
-    # Join datasets on date (and optionally location if available)
+    # Join datasets on date
     joined_data = pd.merge(
         accident_data,
         weather_data,
@@ -76,9 +79,9 @@ default_args = {
 }
 
 with DAG(
-    'combine_datasets_dag',
+    'combine_datasets_DAG',
     default_args=default_args,
-    description='DAG to combine weather and accident datasets',
+    description='DAG to combine weather data from MongoDB and accident datasets',
     schedule_interval='@once',  # Run on demand
     start_date=datetime(2023, 1, 1),
     catchup=False,
@@ -86,7 +89,7 @@ with DAG(
 
     extract_weather = PythonOperator(
         task_id='extract_weather_data',
-        python_callable=extract_weather_data,
+        python_callable=extract_weather_data_from_mongodb,
         provide_context=True
     )
 
