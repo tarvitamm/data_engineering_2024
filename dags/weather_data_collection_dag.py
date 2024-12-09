@@ -10,7 +10,7 @@ def fetch_weather_data(ti):
         "longitude": 26.7158,
         "start_date": "2011-01-01",
         "end_date": "2024-01-01",
-        "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,rain_sum,visibility",
+        "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,rain_sum",
         "timezone": "Europe/Tallinn"
     }
     response = requests.get(url, params=params)
