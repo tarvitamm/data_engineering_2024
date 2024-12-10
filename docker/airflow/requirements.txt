@@ -9,3 +9,5 @@ pyiceberg
 boto3
 s3fs
 minio
+pyiceberg            # Vb see ja jargmine ei pea olema siin.
+airflow-dbt-python

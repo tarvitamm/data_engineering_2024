@@ -10,3 +10,11 @@ models:
         description: "The type of traffic accident"
       - name: total_accidents
         description: "The total number of traffic accidents"
+
+  - name: test_table
+    description: "A test table selecting 5 rows from integrated_data"
+    columns:
+      - name: accident_id
+        description: "Unique identifier for the accident"
+      - name: accident_date
+        description: "Date of the accident"
