@@ -1,5 +1,12 @@
 version: 2
 
+sources:
+  - name: main
+    description: "Main schema containing integrated data"
+    tables:
+      - name: integrated_data
+        description: "Table with integrated accident data"
+
 models:
   - name: combined_analysis
     description: "Model to analyze traffic accidents by region and type"

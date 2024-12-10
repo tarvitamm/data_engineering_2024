@@ -34,8 +34,9 @@ with DAG(
     dbt_run = DbtRunOperator(
         task_id='run_dbt',
         project_dir='/usr/app/dbt_project/',
-        profiles_dir='/root/.dbt',
+        profiles_dir='/home/airflow/.dbt',  # changed from /root/.dbt
         select='*',
     )
+
 
     verify_file >> dbt_run

@@ -9,6 +9,9 @@ RUN apt-get update && apt-get install -y \
 
 USER airflow
 
+# Install dbt-core and dbt-duckdb adapter
+RUN pip install dbt-core dbt-duckdb
+
 # Copy requirements and install Python packages
 COPY requirements.txt /requirements.txt
 RUN pip install --no-cache-dir -r /requirements.txt
