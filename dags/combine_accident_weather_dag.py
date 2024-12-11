@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 import duckdb
 from pymongo import MongoClient
+import os
 
 def extract_weather_data_from_mongodb(**kwargs):
     # Connect to MongoDB
@@ -62,15 +63,24 @@ def save_combined_data(**kwargs):
     # Pull joined data from XCom
     joined_data = pd.DataFrame(ti.xcom_pull(task_ids='join_datasets'))
     
-    # Save to DuckDB
+    # Path to DuckDB file
     db_path = '/opt/airflow/data/processed/integrated_data.duckdb'
+    
+    # Check if the DuckDB file exists
+    if os.path.exists(db_path):
+        os.remove(db_path)  # Delete the existing file
+        print(f"Existing DuckDB file at {db_path} deleted.")
+
+    # Save to DuckDB
     conn = duckdb.connect(db_path)
-    conn.execute("CREATE OR REPLACE TABLE integrated_data AS SELECT * FROM joined_data")
+    conn.execute("CREATE TABLE integrated_data AS SELECT * FROM joined_data")
     conn.close()
+    print(f"New DuckDB file created at {db_path}.")
 
     # Optionally save to CSV as well
     csv_path = '/opt/airflow/data/processed/integrated_data.csv'
     joined_data.to_csv(csv_path, index=False)
+    print(f"Data saved to CSV at {csv_path}.")
 
 default_args = {
     'owner': 'airflow',

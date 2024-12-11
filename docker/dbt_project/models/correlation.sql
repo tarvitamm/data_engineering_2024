@@ -16,3 +16,4 @@ SELECT
 FROM integrated_data
 GROUP BY weather_condition
 ORDER BY weather_condition
+

@@ -9,3 +9,4 @@ pyiceberg
 boto3
 s3fs
 minio
+hive
