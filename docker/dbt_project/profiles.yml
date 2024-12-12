@@ -3,5 +3,5 @@ dbt_project: # This must match the `profile` name in dbt_project.yml
   outputs:
     dev:
       type: duckdb
-      path: /usr/app/data/processed/integrated_data.duckdb # Path to your DuckDB database
+      path: /opt/airflow/data/processed/integrated_data.duckdb # Path to your DuckDB database
       schema: main # Default schema in DuckDB

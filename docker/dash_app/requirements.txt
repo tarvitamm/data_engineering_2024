@@ -4,3 +4,4 @@ duckdb
 pandas               
 plotly               
 matplotlib
+pyproj

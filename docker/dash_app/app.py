@@ -1,175 +1,211 @@
 import dash
-from dash import html, dcc
-import duckdb
-import pandas as pd
+from dash import dcc, html, Input, Output
 import plotly.express as px
+import pandas as pd
+import duckdb
+from pyproj import Transformer
 import plotly.graph_objects as go
+import redis
+from datetime import datetime
 
-# Initialize Dash app
-app = dash.Dash(__name__)
+# Constants
+DB_PATH = '/usr/app/data/processed/integrated_data.duckdb'
+MAPBOX_STYLE = "carto-positron"
+HEIGHT = 800
 
-# Connect to DuckDB and fetch data from views
-duckdb_file = '/usr/app/data/processed/integrated_data.duckdb'  # Update with your DuckDB file path
+# Function: Load data
+def load_data():
+    try:
+        con = duckdb.connect(DB_PATH)
+        df = con.execute("SELECT * FROM integrated_data").fetchdf()
+        con.close()
+    except Exception as e:
+        print(f"Error loading data: {e}")
+        df = pd.DataFrame()
+    return df
+
+# Function: Transform data
+def preprocess_data(df):
+    transformer = Transformer.from_crs("EPSG:3301", "EPSG:4326", always_xy=True)
+    df["Longitude"], df["Latitude"] = transformer.transform(df["Y koordinaat"].values, df["X koordinaat"].values)
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df["Toimumisaeg"] = pd.to_datetime(df["Toimumisaeg"], errors="coerce")
+    return df
+
+# Function: Create severity vs. temperature chart
+def create_severity_temperature_chart(df):
+    if df.empty:
+        return go.Figure().update_layout(title="No Data Available for Severity vs. Temperature")
+
+    bins = [-float("inf"), -10, 0, 10, 20, float("inf")]
+    labels = ["< -10°C", "-10°C to 0°C", "0°C to 10°C", "10°C to 20°C", "> 20°C"]
+    df["temperature_category"] = pd.cut(df["temperature_min"], bins=bins, labels=labels)
+    
+    grouped = df.groupby("temperature_category", as_index=False).agg({
+        "Vigastatuid": "mean",
+        "Hukkunuid": "mean"
+    }).rename(columns={"Vigastatuid": "Injuries", "Hukkunuid": "Fatalities"})
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=grouped["temperature_category"], y=grouped["Injuries"], name="Injuries", marker_color="blue"))
+    fig.add_trace(go.Bar(x=grouped["temperature_category"], y=grouped["Fatalities"], name="Fatalities", marker_color="red"))
+    fig.add_trace(go.Scatter(x=grouped["temperature_category"], y=grouped["Injuries"], mode="lines+markers", name="Injury Trend", line=dict(color="blue", dash="dash")))
+    fig.add_trace(go.Scatter(x=grouped["temperature_category"], y=grouped["Fatalities"], mode="lines+markers", name="Fatality Trend", line=dict(color="red", dash="dash")))
+
+    fig.update_layout(
+        title="Accident Severity vs. Temperature",
+        xaxis_title="Temperature Category",
+        yaxis_title="Average per Accident",
+        barmode="group",
+        height=HEIGHT,
+        legend_title="Metrics"
+    )
+    return fig
+
+# Function: Create monthly aggregation chart
+def create_monthly_aggregation_chart(df):
+    if df.empty:
+        return go.Figure().update_layout(title="No Data Available for Monthly Aggregation")
+
+    # Process monthly data
+    df["TemperatureYearMonth"] = df["date"].dt.to_period("M").dt.to_timestamp()
+    df["CrashYearMonth"] = df["Toimumisaeg"].dt.to_period("M").dt.to_timestamp()
+
+    temperature_data = df.groupby("TemperatureYearMonth", as_index=False).agg({
+        "temperature_min": "mean",
+        "temperature_max": "mean"
+    })
+    temperature_data["temperature_avg"] = (temperature_data["temperature_min"] + temperature_data["temperature_max"]) / 2
+
+    crash_precipitation_data = df.groupby("CrashYearMonth", as_index=False).agg({
+        "Isikuid": "sum",
+        "precipitation_sum": "sum"
+    })
+
+    combined_data = pd.merge(
+        crash_precipitation_data,
+        temperature_data,
+        left_on="CrashYearMonth",
+        right_on="TemperatureYearMonth",
+        how="inner"
+    )
+    combined_data.rename(columns={"CrashYearMonth": "YearMonth"}, inplace=True)
+
+    # Create the chart
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=combined_data["YearMonth"], y=combined_data["Isikuid"], name="Persons", marker_color="blue"))
+    fig.add_trace(go.Bar(x=combined_data["YearMonth"], y=combined_data["precipitation_sum"], name="Precipitation (mm)", marker_color="green"))
+    
+    # Add trendline for "Isikuid"
+    fig.add_trace(go.Scatter(
+        x=combined_data["YearMonth"],
+        y=combined_data["Isikuid"],
+        mode="lines+markers",
+        name="Casualty Trendline",
+        line=dict(color="red", width=2)
+    ))
+
+    fig.update_layout(
+        title="Monthly Trends of Crashes, Precipitation, and Casualty Trendline",
+        xaxis_title="Month",
+        yaxis_title="Values",
+        barmode="group",
+        height=HEIGHT,
+        legend_title="Metrics"
+    )
+    return fig
+
+# Function: Create map visualization
+def create_map(df):
+    return px.scatter_mapbox(
+        df,
+        lat="Latitude",
+        lon="Longitude",
+        color="precipitation_sum",
+        size="Vigastatuid",
+        mapbox_style=MAPBOX_STYLE,
+        title="Crash Locations and Weather Conditions",
+        hover_name="date",
+        hover_data={
+            "Latitude": False,
+            "Longitude": False,
+            "precipitation_sum": True,
+            "Vigastatuid": True,
+            "date": True
+        },
+        labels={
+            "Vigastatuid": "Injured",
+            "precipitation_sum": "Precipitation (mm)",
+            "date": "Date"
+        }
+    ).update_layout(height=HEIGHT)
+
+# Load and preprocess data
+df = load_data()
+df = preprocess_data(df)
+fig_severity_temp = create_severity_temperature_chart(df)
+fig_monthly_aggregation = create_monthly_aggregation_chart(df)
+fig_map = create_map(df)
+
+# Connect to Redis
+redis_client = redis.Redis(host="redis", port=6379)
+
+# Save example data with a timestamp (only for illustration)
+data_to_cache = "Example data to cache"
+redis_client.set("example_key", data_to_cache)
+redis_client.set("example_key_timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+# Fetch data and timestamp from Redis
 try:
-    con = duckdb.connect(duckdb_file)
+    data_from_redis = redis_client.get("example_key").decode("utf-8")
+    timestamp_from_redis = redis_client.get("example_key_timestamp").decode("utf-8")
+except (redis.exceptions.ConnectionError, AttributeError):
+    data_from_redis = "No data found in Redis."
+    timestamp_from_redis = "No timestamp available."
 
-    # Fetch data from views
-    monthly_data = con.execute("SELECT * FROM monthly;").fetchdf()
-    time_precip_data = con.execute("SELECT * FROM accident_timeofday;").fetchdf()
-    severity_temp_data = con.execute("SELECT * FROM combined_analysis;").fetchdf()
-    weather_data = con.execute("SELECT * FROM correlation;").fetchdf()
 
-    con.close()
-except Exception as e:
-    print(f"Error fetching data from DuckDB: {str(e)}")
-    monthly_data = pd.DataFrame()
-    time_precip_data = pd.DataFrame()
-    severity_temp_data = pd.DataFrame()
-
-# Ensure data is sorted correctly by month
-if not monthly_data.empty:
-    monthly_data["month"] = monthly_data["month"].astype(int)
-    monthly_data = monthly_data.sort_values("month")
-
-    # Map month numbers to names
-    month_map = {
-        1: "January", 2: "February", 3: "March", 4: "April", 5: "May",
-        6: "June", 7: "July", 8: "August", 9: "September", 10: "October",
-        11: "November", 12: "December"
-    }
-    monthly_data["month_name"] = monthly_data["month"].map(month_map)
-
-# Create plots from the fetched data
-
-# Plot 1: Monthly Accident Trends
-fig_monthly = px.line(
-    monthly_data,
-    x="month_name",
-    y="avg_accidents",  # Correct column name
-    title="Monthly Average Accident Trends",
-    labels={"month_name": "Month", "avg_accidents": "Average Accidents"},
-    markers=True
-)
-fig_monthly_precip = px.line(
-    monthly_data,
-    x="month_name",
-    y="avg_temp",
-    title="Average Monthly Temperature",
-    labels={"month_name": "Month", "avg_temp": "Average Temperature"},
-    markers=True
-)
-
-fig_weather_pie = px.pie(
-    weather_data,
-    values="total_accidents",
-    names="weather_condition",
-    title="Accidents by Weather Conditions",
-    color="weather_condition",  # Optional: Assign specific colors
-    color_discrete_map={
-        "Good": "green",
-        "Fair": "yellow",
-        "Poor": "orange",
-        "Bad": "red"
-    }
-)
-# Dual-Axis Line Chart: Monthly Avg Temp and Avg Accidents
-fig_dual_axis = go.Figure()
-
-fig_dual_axis.add_trace(
-    go.Scatter(
-        x=monthly_data["month_name"],
-        y=monthly_data["avg_temp"],
-        mode="lines+markers",
-        name="Average Temperature (°C)",
-        line=dict(color="blue")
-    )
-)
-
-fig_dual_axis.add_trace(
-    go.Scatter(
-        x=monthly_data["month_name"],
-        y=monthly_data["avg_accidents"],
-        mode="lines+markers",
-        name="Average Accidents",
-        line=dict(color="red"),
-        yaxis="y2"
-    )
-)
-
-fig_dual_axis.update_layout(
-    title="Average Temperature and Accident Count by Month",
-    xaxis_title="Month",
-    yaxis_title="Average Temperature (°C)",
-    yaxis2=dict(
-        title="Average Accidents",
-        overlaying="y",
-        side="right"
-    ),
-    xaxis=dict(tickmode="linear"),
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
-    margin=dict(t=50, b=40)
-)
-
-# Plot 2: Time of Day vs. Precipitation Category
-fig_time_precip = px.bar(
-    time_precip_data,
-    x="time_of_day",
-    y="total_accidents",
-    color="precipitation_category",
-    title="Accidents by Time of Day and Precipitation Category",
-    labels={"time_of_day": "Time of Day", "total_accidents": "Total Accidents"},
-    category_orders={"time_of_day": ["Night (00:00-05:59)", "Morning (06:00-11:59)", "Afternoon (12:00-17:59)", "Evening (18:00-23:59)"]},  # Ensure all periods appear in order
-    barmode="stack"
-)
-
-# Plot 3: Accident Severity vs. Temperature Categories
-# Prepare melted data for a grouped bar chart
-severity_temp_melted = severity_temp_data.melt(
-    id_vars="temperature_category",
-    value_vars=["avg_injuries_per_accident", "avg_fatalities_per_accident"],
-    var_name="severity_type",
-    value_name="value"
-)
-fig_severity_temp = px.bar(
-    severity_temp_melted,
-    x="temperature_category",
-    y="value",
-    color="severity_type",
-    title="Accident Severity vs. Temperature Categories",
-    labels={"temperature_category": "Temperature Category", "value": "Average per Accident"},
-    barmode="group"
-)
-
-# Layout of the Dash app
+# App layout
+app = dash.Dash(__name__)
+app.title = "Car Crashes and Weather Analysis"
 app.layout = html.Div([
-    html.H1('Traffic Accident Analysis Dashboard'),
-    
-    # Monthly Trends Section
-    html.Div([
-        html.H2("Monthly Accident Trends"),
-        dcc.Graph(figure=fig_monthly),
-        dcc.Graph(figure=fig_monthly_precip),
-        dcc.Graph(figure=fig_dual_axis)  # Adding the dual-axis plot
-    ]),
-    
-    html.Div([
-        html.H2("Accidents by Weather Condition"),
-        dcc.Graph(figure=fig_weather_pie)
-    ]),
-
-    # Time of Day Section
-    html.Div([
-        html.H2("Accidents by Time of Day and Precipitation"),
-        dcc.Graph(figure=fig_time_precip)
-    ]),
-
-    # Severity vs. Temperature Section
-    html.Div([
-        html.H2("Accident Severity vs. Temperature Categories"),
-        dcc.Graph(figure=fig_severity_temp)
+    html.H1("Car Crashes and Weather Data Dashboard"),
+    dcc.Tabs([
+        dcc.Tab(label="Crash Density Heatmap", children=[
+            html.Div([
+                dcc.Graph(
+                    id="spatial-heatmap",
+                    figure=px.density_mapbox(
+                        df,
+                        lat="Latitude",
+                        lon="Longitude",
+                        z="Isikuid",
+                        radius=10,
+                        center=dict(lat=58.5953, lon=25.0136),
+                        mapbox_style=MAPBOX_STYLE,
+                        title="Crash Density Across Estonia"
+                    ).update_layout(height=HEIGHT)
+                )
+            ])
+        ]),
+        dcc.Tab(label="Monthly Aggregation", children=[
+            html.Div([dcc.Graph(id="monthly-bar-chart-with-trendline", figure=fig_monthly_aggregation)])
+        ]),
+        dcc.Tab(label="Severity vs Temperature", children=[
+            html.Div([dcc.Graph(id="severity-temperature-chart", figure=fig_severity_temp)])
+        ]),
+        dcc.Tab(label="Map Visualization", children=[
+            html.Div([dcc.Graph(id="map", figure=fig_map)])
+        ]),
+        # Create Redis display tab
+        dcc.Tab(label="Redis Data", children=[
+            html.Div([
+                html.H3("Redis Cached Data"),
+                html.P(f"Cached on: {timestamp_from_redis}", style={"fontWeight": "bold"}),
+                html.Pre(data_from_redis, style={"backgroundColor": "#f9f9f9", "padding": "15px", "border": "1px solid #ccc"})
+            ])
+        ])
     ])
 ])
 
-# Run the app
 if __name__ == '__main__':
     app.run_server(host='0.0.0.0', port=8050)
