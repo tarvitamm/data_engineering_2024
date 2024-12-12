@@ -35,9 +35,20 @@ services:
     command: tail -f /dev/null
     tty: true
 
-  streamlit:
+  dash:
     build:
-      context: ./docker/streamlit
-    container_name: streamlit_container
+      context: ./docker/dash_app
+    container_name: dash_app
+    volumes:
+      - ./data/processed:/usr/app/data/processed
     ports:
-      - "8501:8501"
+      - "8050:8050"
+    command: python app.py
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    ports:
+      - "6379:6379"
