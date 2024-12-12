@@ -16,6 +16,7 @@ services:
       - ./data/processed:/usr/app/data/processed
       - ./docker/dbt_project:/usr/app/dbt_project
       - ./docker/dbt_project/profiles.yml:/home/airflow/.dbt/profiles.yml
+      - /var/run/docker.sock:/var/run/docker.sock
 
     ports:
       - "8080:8080"
