@@ -1,13 +1,51 @@
 version: 2
 
+# Define the source (external data)
 sources:
   - name: main
-    description: "Main schema containing integrated data"
     tables:
       - name: integrated_data
-        description: "Table with integrated accident data"
+        description: "Combined dataset of weather and accidents data"
+        columns:
+          - name: date
+            description: "Date of the record"
+          - name: temperature_2m_max
+            description: "Maximum temperature of the day"
+          - name: temperature_2m_min
+            description: "Minimum temperature of the day"
+          - name: Maakond
+            description: "Region where the accident occurred"
+          - name: Liiklusõnnetuse liik
+            description: "Type of traffic accident"
 
+# Document the models
 models:
+  - name: staging_accidents
+    description: "Staging model for accidents data from integrated_data table"
+    columns:
+      - name: accident_id
+        description: "Unique identifier for the accident"
+      - name: accident_date
+        description: "Date of the accident"
+      - name: region
+        description: "Region where the accident occurred"
+      - name: num_people_involved
+        description: "Number of people involved in the accident"
+      - name: num_injuries
+        description: "Number of injuries in the accident"
+
+  - name: staging_weather
+    description: "Staging model for weather data from integrated_data table"
+    columns:
+      - name: weather_date
+        description: "Date of the weather record"
+      - name: max_temperature
+        description: "Maximum temperature for the day"
+      - name: precipitation
+        description: "Total precipitation for the day"
+      - name: snowfall
+        description: "Total snowfall for the day"
+
   - name: combined_analysis
     description: "Model to analyze traffic accidents by region and type"
     columns:
@@ -25,3 +63,35 @@ models:
         description: "Unique identifier for the accident"
       - name: accident_date
         description: "Date of the accident"
+
+  - name: fact_car_accidents
+    description: "Fact table for car accidents, combining accidents and weather data"
+    columns:
+      - name: accident_id
+        description: "Unique ID for the accident"
+      - name: max_temperature
+        description: "Maximum temperature on the accident day"
+
+  - name: dim_weather
+    description: "Dimension table for weather data"
+    columns:
+      - name: weather_date
+        description: "Date of the weather record"
+      - name: rainfall
+        description: "Rainfall on the given date"
+
+  - name: dim_time
+    description: "Dimension table for time data"
+    columns:
+      - name: date
+        description: "Date of the event"
+      - name: year
+        description: "Year of the event"
+
+  - name: dim_location
+    description: "Dimension table for location data"
+    columns:
+      - name: region
+        description: "Region where the accident occurred"
+      - name: municipality
+        description: "Municipality of the accident"      

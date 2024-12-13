@@ -24,7 +24,7 @@ services:
       bash -c "
       airflow db init &&
       airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com &&
-      airflow scheduler &
+      airflow scheduler & 
       airflow webserver"
 
   dbt:
@@ -34,7 +34,7 @@ services:
     volumes:
       - ./docker/dbt_project:/usr/app/dbt_project
       - ./docker/dbt_project/profiles.yml:/root/.dbt/profiles.yml
-      - ./data/processed:/usr/app/data/processed
+      - ./data:/usr/app/data  # Correct mount for accessing data directory
     command: tail -f /dev/null
     tty: true
 
