@@ -13,6 +13,7 @@ services:
       - ./logs:/opt/airflow/logs
       - ./plugins:/opt/airflow/plugins
       - ./data:/opt/airflow/data
+      - ./configs:/opt/airflow/configs
     ports:
       - "8080:8080"
     command: >
@@ -21,8 +22,11 @@ services:
       airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com &&
       airflow scheduler &
       airflow webserver"
+    networks:
+      - iceberg_network
+      - default
     depends_on:
-      - dbt
+      - mongodb
 
   dbt:
     build:
@@ -47,8 +51,90 @@ services:
     depends_on:
       - redis
 
+  
+  streamlit:
+    build:
+      context: ./docker/streamlit
+    container_name: streamlit
+    volumes:
+        - ./data/processed:/usr/app/data/processed
+    ports:
+      - "8501:8501"
+    command: streamlit run app.py --server.port=8501 --server.address=0.0.0.0 --server.headless=true
+
+
   redis:
     image: redis:latest
     container_name: redis
     ports:
       - "6379:6379"
+  mongodb:
+    image: mongo:6.0
+    container_name: mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+  minio:
+    image: minio/minio:RELEASE.2024-10-13T13-34-11Z
+    container_name: minio
+    ports:
+      - "9000:9000" # MinIO API port
+      - "9001:9001" # MinIO Console port
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - ./minio_data:/data
+    networks:
+      iceberg_network:
+        aliases:
+          - warehouse.minio
+  iceberg_rest:
+    image: tabulario/iceberg-rest:1.6.0
+    container_name: iceberg_rest
+    ports:
+      - "8181:8181"
+    volumes:
+      - ./configs/.pyiceberg.yaml:/home/iceberg/.pyiceberg.yaml
+    environment:
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_REGION: us-east-1
+      CATALOG_WAREHOUSE: s3://warehouse/
+      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
+      CATALOG_S3_ENDPOINT: http://minio:9000
+      PYICEBERG_CONFIG: /home/iceberg/.pyiceberg.yaml
+    depends_on:
+      - minio
+    networks:
+      - iceberg_network
+  mc:
+    depends_on:
+      - minio
+    image: minio/mc:RELEASE.2024-10-02T08-27-28Z
+    container_name: mc
+    networks:
+      iceberg_network:
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc config host add minio http://minio:9000 minioadmin minioadmin) do echo '...waiting...' && sleep 1; done;
+      /usr/bin/mc rm -r --force minio/warehouse;
+      /usr/bin/mc mb minio/warehouse;
+      /usr/bin/mc policy set public minio/warehouse;
+      "
+
+networks:
+  iceberg_network:
+    driver: bridge
+volumes:
+  mongodb_data:
+    driver: local
+  minio_data:
+    driver: local
+

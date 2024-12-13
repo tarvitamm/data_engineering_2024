@@ -39,7 +39,7 @@ def create_severity_temperature_chart(df):
 
     bins = [-float("inf"), -10, 0, 10, 20, float("inf")]
     labels = ["< -10°C", "-10°C to 0°C", "0°C to 10°C", "10°C to 20°C", "> 20°C"]
-    df["temperature_category"] = pd.cut(df["temperature_2m_min"], bins=bins, labels=labels)
+    df["temperature_category"] = pd.cut(df["temperature_min"], bins=bins, labels=labels)
     
     grouped = df.groupby("temperature_category", as_index=False).agg({
         "Vigastatuid": "mean",
@@ -72,10 +72,10 @@ def create_monthly_aggregation_chart(df):
     df["CrashYearMonth"] = df["Toimumisaeg"].dt.to_period("M").dt.to_timestamp()
 
     temperature_data = df.groupby("TemperatureYearMonth", as_index=False).agg({
-        "temperature_2m_min": "mean",
-        "temperature_2m_max": "mean"
+        "temperature_min": "mean",
+        "temperature_max": "mean"
     })
-    temperature_data["temperature_avg"] = (temperature_data["temperature_2m_min"] + temperature_data["temperature_2m_max"]) / 2
+    temperature_data["temperature_avg"] = (temperature_data["temperature_min"] + temperature_data["temperature_max"]) / 2
 
     crash_precipitation_data = df.groupby("CrashYearMonth", as_index=False).agg({
         "Isikuid": "sum",
@@ -150,19 +150,69 @@ fig_map = create_map(df)
 # Connect to Redis
 redis_client = redis.Redis(host="redis", port=6379)
 
-# Save example data with a timestamp (only for illustration)
-data_to_cache = "Example data to cache"
-redis_client.set("example_key", data_to_cache)
-redis_client.set("example_key_timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+# Enhanced function: Log query performance
+def log_query_performance(query, execution_time, rows_affected):
+    log_entry = {
+        "query": query,
+        "execution_time_ms": execution_time,
+        "rows_affected": rows_affected,
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    # Store in Redis as a list of logs
+    redis_client.lpush("query_logs", str(log_entry))
+    # Keep only the last 100 logs
+    redis_client.ltrim("query_logs", 0, 99)
 
-# Fetch data and timestamp from Redis
-try:
-    data_from_redis = redis_client.get("example_key").decode("utf-8")
-    timestamp_from_redis = redis_client.get("example_key_timestamp").decode("utf-8")
-except (redis.exceptions.ConnectionError, AttributeError):
-    data_from_redis = "No data found in Redis."
-    timestamp_from_redis = "No timestamp available."
+# Enhanced function: Get cached query result
+def get_cached_query_result(query):
+    cache_key = f"query_cache:{query}"
+    cached_result = redis_client.get(cache_key)
+    if cached_result:
+        # Convert cached JSON back to DataFrame
+        return pd.read_json(cached_result.decode("utf-8"))
+    return None
 
+# Enhanced function: Execute query with caching and performance logging
+def execute_query_with_caching_and_logging(query):
+    # Check Redis cache first
+    cached_result = get_cached_query_result(query)
+    if cached_result is not None:
+        print(f"Cache hit for query: {query}")
+        return cached_result
+
+    # If not cached, execute query on DuckDB
+    try:
+        con = duckdb.connect(DB_PATH)
+        start_time = datetime.now()
+        result = con.execute(query).fetchdf()
+        execution_time = (datetime.now() - start_time).total_seconds() * 1000  # Convert to milliseconds
+        rows_affected = len(result)
+        con.close()
+
+        # Cache the result in Redis
+        redis_client.set(f"query_cache:{query}", result.to_json(), ex=3600)  # Cache for 1 hour
+
+        # Log performance in Redis
+        log_query_performance(query, execution_time, rows_affected)
+
+        return result
+    except Exception as e:
+        print(f"Error executing query: {e}")
+        return pd.DataFrame()
+
+# Enhanced function: Fetch query logs
+def fetch_query_logs():
+    logs = redis_client.lrange("query_logs", 0, -1)  # Get all logs
+    return [eval(log.decode("utf-8")) for log in logs] if logs else []
+
+# Example Usage
+query = "SELECT Isikuid FROM integrated_data"
+
+# Execute the query with caching and logging
+result = execute_query_with_caching_and_logging(query)
+
+# Fetch and display query logs
+query_logs = fetch_query_logs()
 
 # App layout
 app = dash.Dash(__name__)
@@ -196,12 +246,10 @@ app.layout = html.Div([
         dcc.Tab(label="Map Visualization", children=[
             html.Div([dcc.Graph(id="map", figure=fig_map)])
         ]),
-        # Create Redis display tab
-        dcc.Tab(label="Redis Data", children=[
+        dcc.Tab(label="Query Logs", children=[
             html.Div([
-                html.H3("Redis Cached Data"),
-                html.P(f"Cached on: {timestamp_from_redis}", style={"fontWeight": "bold"}),
-                html.Pre(data_from_redis, style={"backgroundColor": "#f9f9f9", "padding": "15px", "border": "1px solid #ccc"})
+                html.H3("Query Performance Logs"),
+                html.Pre("\n".join(str(log) for log in query_logs), style={"backgroundColor": "#f9f9f9", "padding": "15px", "border": "1px solid #ccc"})
             ])
         ])
     ])

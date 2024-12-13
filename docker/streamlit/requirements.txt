@@ -3,3 +3,5 @@ duckdb               # DuckDB access from within Streamlit
 pandas               # Data manipulation in the dashboard
 plotly               # For interactive visualizations (optional)
 matplotlib 
+redis
+pyproj

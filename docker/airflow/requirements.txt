@@ -1,4 +1,13 @@
-pandas               # Data manipulation in custom Airflow tasks
-requests             # API requests, e.g., for weather data
-duckdb               # Connecting to DuckDB from within Airflow DAGs
-apache-airflow 
+pandas               # Used for data manipulation in multiple services
+requests             # For making API requests (e.g., fetching data)
+duckdb               # Shared library for DuckDB access
+pytest  
+pymongo
+pyarrow
+numpy
+pyiceberg
+boto3
+s3fs
+minio
+airflow-dbt-python
+dbt-duckdb
