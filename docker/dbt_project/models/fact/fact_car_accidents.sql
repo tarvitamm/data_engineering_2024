@@ -1,6 +1,7 @@
 {{ config(
     materialized='table',
-    schema='fact'
+    schema='fact',
+    tags=['fact']
 ) }}
 
 WITH base AS (

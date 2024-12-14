@@ -18,9 +18,9 @@ default_args = {
 with DAG(
     dag_id='duckdb_dbt_process',
     default_args=default_args,
-    description='Run dbt transformations',
+    description='Run dbt transformations in sequence',
     schedule_interval=None,
-    start_date=datetime(2023, 1, 1), # confirm??
+    start_date=datetime(2023, 1, 1),  # confirm start date
     catchup=False,
 ) as dag:
 
@@ -30,13 +30,37 @@ with DAG(
         python_callable=verify_duckdb_file
     )
 
-    # Task 2: Run dbt
-    dbt_run = DbtRunOperator(
-        task_id='run_dbt',
+    # Task 2: Run staging models
+    dbt_run_staging = DbtRunOperator(
+        task_id='run_dbt_staging',
         project_dir='/usr/app/dbt_project/',
-        profiles_dir='/home/airflow/.dbt',  # changed from /root/.dbt
-        select='*',
+        profiles_dir='/home/airflow/.dbt',
+        select='tag:staging',  # Ensure models are tagged as 'staging'
     )
 
+    # Task 3: Run dimension models
+    dbt_run_dimensions = DbtRunOperator(
+        task_id='run_dbt_dimensions',
+        project_dir='/usr/app/dbt_project/',
+        profiles_dir='/home/airflow/.dbt',
+        select='tag:dimensions',  # Ensure models are tagged as 'dimensions'
+    )
 
-    verify_file >> dbt_run
+    # Task 4: Run fact models
+    dbt_run_fact = DbtRunOperator(
+        task_id='run_dbt_fact',
+        project_dir='/usr/app/dbt_project/',
+        profiles_dir='/home/airflow/.dbt',
+        select='tag:fact',  # Ensure models are tagged as 'fact'
+    )
+
+    # Task 5: Run analysis models
+    dbt_run_analysis = DbtRunOperator(
+        task_id='run_dbt_analysis',
+        project_dir='/usr/app/dbt_project/',
+        profiles_dir='/home/airflow/.dbt',
+        select='tag:analysis',  # Ensure models are tagged as 'analysis'
+    )
+
+    # Define task dependencies
+    verify_file >> dbt_run_staging >> dbt_run_dimensions >> dbt_run_fact >> dbt_run_analysis

@@ -27,6 +27,10 @@ default_args = {
 
 def transfer_duckdb_to_postgres():
     """Transfer all tables from DuckDB to PostgreSQL."""
+    import duckdb
+    import psycopg2
+    from psycopg2 import sql
+
     # Connect to DuckDB
     duckdb_conn = duckdb.connect(DUCKDB_FILE)
 
@@ -44,9 +48,16 @@ def transfer_duckdb_to_postgres():
         schema = duckdb_conn.execute(f"DESCRIBE {table_name}").fetchall()
         print(f"Schema for table {table_name}: {schema}")
 
+        # Map DuckDB types to PostgreSQL types
+        type_mapping = {
+            'BIGINT': 'BIGINT',
+            'VARCHAR': 'VARCHAR',
+            'DOUBLE': 'DOUBLE PRECISION',  # Corrected mapping
+        }
+
         # Create the table in PostgreSQL
         columns = ", ".join([
-            f"{sql.Identifier(col[0]).as_string(pg_cursor)} {col[1]}"
+            f'"{col[0]}" {type_mapping.get(col[1], col[1])}'
             for col in schema
         ])
         create_table_query = f"CREATE TABLE IF NOT EXISTS {table_name} ({columns});"
@@ -59,7 +70,7 @@ def transfer_duckdb_to_postgres():
         # Insert data into PostgreSQL
         if data:
             placeholders = ", ".join(["%s"] * len(schema))
-            insert_query = sql.SQL(f"INSERT INTO {table_name} VALUES ({placeholders})")
+            insert_query = f"INSERT INTO {table_name} VALUES ({placeholders});"
             pg_cursor.executemany(insert_query, data)
             print(f"Inserted {len(data)} rows into {table_name}")
 

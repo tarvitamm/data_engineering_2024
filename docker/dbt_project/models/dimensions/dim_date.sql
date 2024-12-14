@@ -1,6 +1,7 @@
 {{ config(
     materialized='table',
-    schema='dimensions'
+    schema='dimensions',
+    tags=['dimensions']
 ) }}
 
 WITH all_dates AS (

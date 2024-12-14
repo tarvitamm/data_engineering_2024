@@ -1,7 +1,9 @@
 {{ config(
     materialized='view',
-    schema='staging'
+    schema='staging',
+    tags=['staging']
 ) }}
+
 
 SELECT
     "Juhtumi nr" AS accident_id,
