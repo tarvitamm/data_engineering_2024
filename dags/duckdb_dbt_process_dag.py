@@ -35,7 +35,7 @@ with DAG(
         task_id='run_dbt_staging',
         project_dir='/usr/app/dbt_project/',
         profiles_dir='/home/airflow/.dbt',
-        select='tag:staging',  # Ensure models are tagged as 'staging'
+        select=['staging'],  # Ensure models are tagged as 'staging'
     )
 
     # Task 3: Run dimension models
@@ -43,7 +43,7 @@ with DAG(
         task_id='run_dbt_dimensions',
         project_dir='/usr/app/dbt_project/',
         profiles_dir='/home/airflow/.dbt',
-        select='tag:dimensions',  # Ensure models are tagged as 'dimensions'
+        select=['dimensions'],  # Ensure models are tagged as 'dimensions'
     )
 
     # Task 4: Run fact models
@@ -51,7 +51,7 @@ with DAG(
         task_id='run_dbt_fact',
         project_dir='/usr/app/dbt_project/',
         profiles_dir='/home/airflow/.dbt',
-        select='tag:fact',  # Ensure models are tagged as 'fact'
+        select=['fact'],  # Ensure models are tagged as 'fact'
     )
 
     # Task 5: Run analysis models
@@ -59,7 +59,7 @@ with DAG(
         task_id='run_dbt_analysis',
         project_dir='/usr/app/dbt_project/',
         profiles_dir='/home/airflow/.dbt',
-        select='tag:analysis',  # Ensure models are tagged as 'analysis'
+        select=['analysis'],  # Ensure models are tagged as 'analysis'
     )
 
     # Define task dependencies

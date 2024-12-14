@@ -10,5 +10,5 @@ SELECT
     "temperature_min" AS min_temperature,
     "precipitation_sum" AS precipitation,
     "snowfall_sum" AS snowfall,
-    "rain_sum" AS rainfall,
+    "rain_sum" AS rainfall
 FROM {{ source('main', 'integrated_data') }}

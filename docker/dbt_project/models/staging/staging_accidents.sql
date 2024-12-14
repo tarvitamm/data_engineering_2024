@@ -19,5 +19,5 @@ SELECT
     "Liiklusõnnetuse liik (detailne)" AS accident_detail,
     "Joobes mootorsõidukijuhi osalusel" AS drunk_driver_involved,
     "X koordinaat" AS x_coordinate,
-    "Y koordinaat" AS y_coordinate,
+    "Y koordinaat" AS y_coordinate
 FROM {{ source('main', 'integrated_data') }}

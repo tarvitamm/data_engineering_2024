@@ -26,7 +26,7 @@ default_args = {
 }
 
 def transfer_duckdb_to_postgres():
-    """Transfer all tables from DuckDB to PostgreSQL."""
+    """Transfer all tables from all schemas in DuckDB to PostgreSQL."""
     import duckdb
     import psycopg2
     from psycopg2 import sql
@@ -38,14 +38,18 @@ def transfer_duckdb_to_postgres():
     pg_conn = psycopg2.connect(**POSTGRES_CONN_PARAMS)
     pg_cursor = pg_conn.cursor()
 
-    # Fetch all tables from DuckDB
-    tables = duckdb_conn.execute("SHOW TABLES").fetchall()
+    # Fetch all tables from all schemas in DuckDB
+    tables = duckdb_conn.execute("""
+        SELECT table_schema, table_name 
+        FROM information_schema.tables
+        WHERE table_schema NOT IN ('pg_catalog', 'information_schema');
+    """).fetchall()
 
-    for (table_name,) in tables:
-        print(f"Processing table: {table_name}")
+    for schema_name, table_name in tables:
+        print(f"Processing table: {table_name} from schema: {schema_name}")
 
         # Fetch schema for the table
-        schema = duckdb_conn.execute(f"DESCRIBE {table_name}").fetchall()
+        schema = duckdb_conn.execute(f"DESCRIBE {schema_name}.{table_name}").fetchall()
         print(f"Schema for table {table_name}: {schema}")
 
         # Map DuckDB types to PostgreSQL types
@@ -60,19 +64,19 @@ def transfer_duckdb_to_postgres():
             f'"{col[0]}" {type_mapping.get(col[1], col[1])}'
             for col in schema
         ])
-        create_table_query = f"CREATE TABLE IF NOT EXISTS {table_name} ({columns});"
+        create_table_query = f"CREATE TABLE IF NOT EXISTS {schema_name}_{table_name} ({columns});"
         print(f"Creating table with query: {create_table_query}")
         pg_cursor.execute(create_table_query)
 
         # Fetch data from DuckDB
-        data = duckdb_conn.execute(f"SELECT * FROM {table_name}").fetchall()
+        data = duckdb_conn.execute(f"SELECT * FROM {schema_name}.{table_name}").fetchall()
 
         # Insert data into PostgreSQL
         if data:
             placeholders = ", ".join(["%s"] * len(schema))
-            insert_query = f"INSERT INTO {table_name} VALUES ({placeholders});"
+            insert_query = f"INSERT INTO {schema_name}_{table_name} VALUES ({placeholders});"
             pg_cursor.executemany(insert_query, data)
-            print(f"Inserted {len(data)} rows into {table_name}")
+            print(f"Inserted {len(data)} rows into {schema_name}_{table_name}")
 
     # Commit changes and close connections
     pg_conn.commit()
@@ -80,6 +84,7 @@ def transfer_duckdb_to_postgres():
     pg_conn.close()
     duckdb_conn.close()
     print("Data transfer from DuckDB to PostgreSQL completed successfully.")
+
 
 with DAG(
     "transfer_duckdb_to_postgres_dag",
