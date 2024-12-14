@@ -10,3 +10,5 @@ boto3
 s3fs
 minio
 hive
+airflow-dbt-python
+dbt-duckdb

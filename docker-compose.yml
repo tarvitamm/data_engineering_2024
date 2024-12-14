@@ -6,27 +6,26 @@ services:
       context: ./docker/airflow
     container_name: airflow_container
     restart: always
-    environment:
-      - AIRFLOW__CORE__LOAD_EXAMPLES=False
     volumes:
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
       - ./plugins:/opt/airflow/plugins
       - ./data:/opt/airflow/data
-      - ./configs:/opt/airflow/configs
+      - ./docker/dbt_project:/usr/app/dbt_project
+      - ./docker/dbt_project/profiles.yml:/home/airflow/.dbt/profiles.yml
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8080:8080"
     command: >
       bash -c "
       airflow db init &&
       airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com &&
-      airflow scheduler &
-      airflow webserver"
-    networks:
-      - iceberg_network
-      - default
+      airflow webserver &
+      airflow scheduler"
     depends_on:
       - mongodb
+    networks:
+      - default
 
   dbt:
     build:
@@ -34,28 +33,21 @@ services:
     container_name: dbt_container
     volumes:
       - ./docker/dbt_project:/usr/app/dbt_project
-      - ./docker/dbt_project/profiles.yml:/root/.dbt/profiles.yml
+      - ./docker/dbt_project/profiles.yml:/home/airflow/.dbt/profiles.yml
       - ./data/processed:/usr/app/data/processed
     command: tail -f /dev/null
     tty: true
-
-  dash:
-    build:
-      context: ./docker/dash_app
-    container_name: dash_app
-    volumes:
-      - ./data/processed:/usr/app/data/processed
-    ports:
-      - "8050:8050"
-    command: python app.py
-    depends_on:
-      - redis
+    networks:
+      - default
 
   redis:
     image: redis:latest
     container_name: redis
     ports:
       - "6379:6379"
+    networks:
+      - default
+
   mongodb:
     image: mongo:6.0
     container_name: mongodb
@@ -67,6 +59,23 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: example
+    networks:
+      - default
+
+  postgres:
+    image: postgres:15 # Use the appropriate PostgreSQL version
+    container_name: postgres_container
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: airflow_db
+    ports:
+      - "5433:5432" # Map PostgreSQL's default port to 5433 on your host
+    volumes:
+      - postgres_data:/var/lib/postgresql/data # Persist PostgreSQL data
+    networks:
+      - default
+
   minio:
     image: minio/minio:RELEASE.2024-10-13T13-34-11Z
     container_name: minio
@@ -80,35 +89,13 @@ services:
     volumes:
       - ./minio_data:/data
     networks:
-      iceberg_network:
-        aliases:
-          - warehouse.minio
-  iceberg_rest:
-    image: tabulario/iceberg-rest:1.6.0
-    container_name: iceberg_rest
-    ports:
-      - "8181:8181"
-    volumes:
-      - ./configs/.pyiceberg.yaml:/home/iceberg/.pyiceberg.yaml
-    environment:
-      AWS_ACCESS_KEY_ID: minioadmin
-      AWS_SECRET_ACCESS_KEY: minioadmin
-      AWS_REGION: us-east-1
-      CATALOG_WAREHOUSE: s3://warehouse/
-      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
-      CATALOG_S3_ENDPOINT: http://minio:9000
-      PYICEBERG_CONFIG: /home/iceberg/.pyiceberg.yaml
-    depends_on:
-      - minio
-    networks:
-      - iceberg_network
+      - default
+
   mc:
     depends_on:
       - minio
     image: minio/mc:RELEASE.2024-10-02T08-27-28Z
     container_name: mc
-    networks:
-      iceberg_network:
     entrypoint: >
       /bin/sh -c "
       until (/usr/bin/mc config host add minio http://minio:9000 minioadmin minioadmin) do echo '...waiting...' && sleep 1; done;
@@ -116,12 +103,46 @@ services:
       /usr/bin/mc mb minio/warehouse;
       /usr/bin/mc policy set public minio/warehouse;
       "
+    networks:
+      - default
 
-networks:
-  iceberg_network:
-    driver: bridge
+  dash:
+    build:
+      context: ./docker/dash_app
+    container_name: dash_app
+    profiles:
+      - visualisation
+    volumes:
+      - ./data/processed:/usr/app/data/processed
+    ports:
+      - "8050:8050"
+    command: python app.py
+    depends_on:
+      - redis
+    networks:
+      - default
+
+  streamlit:
+    build:
+      context: ./docker/streamlit
+    container_name: streamlit
+    profiles:
+      - visualisation
+    volumes:
+      - ./data/processed:/usr/app/data/processed
+    ports:
+      - "8501:8501"
+    command: streamlit run app.py --server.port=8501 --server.address=0.0.0.0 --server.headless=true
+    networks:
+      - default
+
 volumes:
   mongodb_data:
     driver: local
   minio_data:
     driver: local
+  postgres_data: {}
+
+networks:
+  default:
+    name: data_engineering_network
